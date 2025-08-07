@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tank SCADA with Pumps and Pressure</title>
+  <style>
+    body {
+      background: #222;
+      color: #eee;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    svg {
+      width: 700px;
+      height: 450px;
+      margin: 0 auto;
+      display: block;
+      user-select: none;
+    }
+    .tank-outline {
+      fill: none;
+      stroke: #eee;
+      stroke-width: 4;
+      rx: 20;
+      ry: 20;
+    }
+    .tank-fill {
+      fill: url(#water-gradient);
+      transition: height 0.5s ease, y 0.5s ease;
+    }
+    .level-mark {
+      stroke: #ccc;
+      stroke-width: 1;
+    }
+    .level-label {
+      fill: #ccc;
+      font-size: 14px;
+      user-select: none;
+    }
+    .valve, .pump {
+      cursor: pointer;
+      stroke-width: 2;
+      transition: fill 0.5s ease, stroke 0.5s ease;
+    }
+    .valve.on {
+      fill: #2ecc71;
+      stroke: #27ae60;
+    }
+    .valve.off {
+      fill: #e74c3c;
+      stroke: #c0392b;
+    }
+    .pump.on {
+      fill: #2ecc71;
+      stroke: #27ae60;
+    }
+    .pump.off {
+      fill: #95a5a6;
+      stroke: #7f8c8d;
+    }
+    line.pipe {
+      stroke: #eee;
+      stroke-width: 6;
+      stroke-linecap: round;
+    }
+    .flow {
+      stroke: #3498db;
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-dasharray: 20 20;
+      animation: flowAnim 1s linear infinite;
+    }
+    @keyframes flowAnim {
+      to {
+        stroke-dashoffset: -40;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>🚰 SCADA Panel with Dual Pumps & Pressure</h1>
+
+  <!-- Pressure Indicators -->
+  <div style="color: #0ff; font-size: 16px; margin-bottom: 10px;">
+    <span id="JP1-text">JP1: 0.00</span> |
+    <span id="JPV1-text">JPV1: 0.00</span>
+  </div>
+
+  <svg viewBox="0 0 700 450" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="water-gradient" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3498db" stop-opacity="0.8"/>
+        <stop offset="100%" stop-color="#2980b9" stop-opacity="0.9"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Tank -->
+    <rect id="tank" x="230" y="50" width="140" height="300" class="tank-outline" rx="20" ry="20" />
+    <rect id="tank-fill" x="230" y="350" width="140" height="0" class="tank-fill" />
+
+    <!-- Level marks -->
+    <line x1="230" y1="350" x2="380" y2="350" class="level-mark" />
+    <text x="390" y="355" class="level-label">0</text>
+
+    <line x1="230" y1="285" x2="380" y2="285" class="level-mark" />
+    <text x="390" y="285" class="level-label">300</text>
+
+    <line x1="230" y1="200" x2="380" y2="200" class="level-mark" />
+    <text x="390" y="205" class="level-label">500</text>
+
+    <line x1="230" y1="120" x2="380" y2="120" class="level-mark" />
+    <text x="390" y="125" class="level-label">800</text>
+
+    <line x1="230" y1="50" x2="380" y2="50" class="level-mark" />
+    <text x="390" y="55" class="level-label">1000</text>
+
+    <!-- Pump Pipes -->
+    <line id="pump-pipe-horizontal" x1="220" y1="320" x2="140" y2="320" class="pipe" />
+    <line id="pump-pipe-vertical" x1="140" y1="300" x2="140" y2="260" class="pipe" />
+    <line id="pump-pipe-vertical" x1="200" y1="300" x2="200" y2="260" class="pipe" />
+
+    
+    <!-- Valve Pipes (after tank) -->
+    <line id="valve-pipe-horizontal" x1="400" y1="280" x2="520" y2="280" class="pipe" />
+    <line id="valve-pipe-vertical" x1="530" y1="285" x2="530" y2="300" class="pipe" />
+    
+
+    <!-- Valve -->
+    <circle id="valve" cx="530" cy="330" r="25" class="valve off" />
+    <text x="530" y="335" font-size="14" fill="#222" text-anchor="middle" pointer-events="none">Valve</text>
+
+    <!-- Pump1 -->
+    <rect id="pump1" x="120" y="180" width="40" height="70" class="pump off" rx="10" ry="10" />
+    <text x="140" y="220" font-size="14" fill="#222" text-anchor="middle" pointer-events="none">Pump1</text>
+
+    <!-- Pump2 -->
+    <rect id="pump2" x="180" y="180" width="40" height="70" class="pump off" rx="10" ry="10" />
+    <text x="200" y="220" font-size="14" fill="#222" text-anchor="middle" pointer-events="none">Pump2</text>
+    
+  </svg>
+
+  <div id="info" style="margin-top:20px; font-size: 18px;"></div>
+
+  <script>
+    async function updateStatus() {
+      try {
+        const res = await fetch('http://localhost:5001/simulate');
+        const data = await res.json();
+
+        const maxLevel = 1000;
+        const tankHeightMax = 300;
+        const tankFill = document.getElementById('tank-fill');
+        const clampedLevel = Math.min(Math.max(data.tank_level, 0), maxLevel);
+        const fillHeight = (clampedLevel / maxLevel) * tankHeightMax;
+        tankFill.setAttribute('y', 350 - fillHeight);
+        tankFill.setAttribute('height', fillHeight);
+
+        // Update Valve
+        const valve = document.getElementById('valve');
+        const valvePipeHor = document.getElementById('valve-pipe-horizontal');
+        const valvePipeVert = document.getElementById('valve-pipe-vertical');
+        if (data.valve_state === 1 || data.valve_state === 'open') {
+          valve.classList.add('on'); valve.classList.remove('off');
+          valvePipeHor.classList.add('flow'); valvePipeVert.classList.add('flow');
+        } else {
+          valve.classList.add('off'); valve.classList.remove('on');
+          valvePipeHor.classList.remove('flow'); valvePipeVert.classList.remove('flow');
+        }
+
+        // Update Pump1
+        const pump1 = document.getElementById('pump1');
+        const pumpPipeHor = document.getElementById('pump-pipe-horizontal');
+        const pumpPipeVert = document.getElementById('pump-pipe-vertical');
+        if (data.pump1_state === 1 || data.pump1_state === 'run') {
+          pump1.classList.add('on'); pump1.classList.remove('off');
+          pumpPipeHor.classList.add('flow'); pumpPipeVert.classList.add('flow');
+        } else {
+          pump1.classList.add('off'); pump1.classList.remove('on');
+          pumpPipeHor.classList.remove('flow'); pumpPipeVert.classList.remove('flow');
+        }
+
+        // Update Pump2
+        const pump2 = document.getElementById('pump2');
+        if (data.pump2_state === 1 || data.pump2_state === 'run') {
+          pump2.classList.add('on'); pump2.classList.remove('off');
+        } else {
+          pump2.classList.add('off'); pump2.classList.remove('on');
+        }
+
+        // Pressure
+        document.getElementById("JP1-text").textContent = `JP1: ${data.JP_state.toFixed(2)}`;
+        document.getElementById("JPV1-text").textContent = `JPV1: ${data.JPV1_state.toFixed(2)}`;
+
+        // Info Summary
+        document.getElementById('info').innerText = `
+          Level: ${data.tank_level.toFixed(2)} mm
+          | Tank state: ${data.tank_state}
+          | Pump1: ${data.pump1_state}
+          | Pump2: ${data.pump2_state}
+          | Valve: ${data.valve_state}
+        `;
+      } catch (e) {
+        console.error('Error fetching simulation data:', e);
+      }
+    }
+
+    setInterval(updateStatus, 1000);
+    updateStatus();
+  </script>
+</body>
+</html>
